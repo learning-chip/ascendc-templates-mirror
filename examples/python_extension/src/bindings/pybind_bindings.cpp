@@ -22,5 +22,7 @@ PYBIND11_MODULE(_C, m) {
     m.doc() = "Python bindings for ActKernel";
     m.def("basic_matmul", &RunBasicMatmul, "")
     .def("grouped_matmul", &RunGroupedMatmul, "")
-    .def("optimized_matmul", &RunOptimizedMatmul, "");
+    .def("optimized_matmul", &RunOptimizedMatmul, "")
+    .def("quant_matmul", &RunQuantMatmul, "")
+    .def("batched_quant_matmul", &RunBatchedQuantMatmul, "");
 }

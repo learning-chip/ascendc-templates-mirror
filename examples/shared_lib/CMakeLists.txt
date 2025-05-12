@@ -72,6 +72,8 @@ endfunction()
 act_add_kernel(basic_matmul dav-c220 ${CMAKE_CURRENT_SOURCE_DIR}/src/host/basic_matmul.cpp)
 act_add_kernel(grouped_matmul dav-c220 ${CMAKE_CURRENT_SOURCE_DIR}/src/host/grouped_matmul.cpp)
 act_add_kernel(optimized_matmul dav-c220 ${CMAKE_CURRENT_SOURCE_DIR}/src/host/optimized_matmul.cpp)
+act_add_kernel(quant_matmul dav-c220 ${CMAKE_CURRENT_SOURCE_DIR}/src/host/quant_matmul.cpp)
+act_add_kernel(batched_quant_matmul dav-c220 ${CMAKE_CURRENT_SOURCE_DIR}/src/host/batched_quant_matmul.cpp)
 
 message("Kernel Object Files: ${KERNEL_OBJ_FILES}")
 

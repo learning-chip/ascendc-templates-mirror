@@ -33,11 +33,15 @@ struct KernelInfo {
     GMMSplit split = GMMSplit::SPLIT_M;
     std::vector<uint8_t *> inputAddr;
     std::vector<uint8_t *> outputAddr;
+    float quantizationScale = 1.0f;
+    uint32_t batchCount = 1;
 };
 
 void BasicMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
 void GroupedMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
 void OptimizedMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
+void QuantMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
+void BatchedQuantMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
 
 }
 

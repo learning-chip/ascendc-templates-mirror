@@ -17,10 +17,13 @@
 #include "act_kernel.h"
 
 namespace ActKernelWrapper {
+at::Device GetAtDevice();
 at::Tensor RunBasicMatmul(const at::Tensor &mat1, const at::Tensor &mat2, const std::string &outDType);
 std::vector<at::Tensor> RunGroupedMatmul(const std::vector<at::Tensor> &mat1, const std::vector<at::Tensor> &mat2,
                                          const std::string &outDType, const bool &splitK);
 at::Tensor RunOptimizedMatmul(const at::Tensor &mat1, const at::Tensor &mat2, const std::string &outDType);
+at::Tensor RunQuantMatmul(const at::Tensor &mat1, const at::Tensor &mat2, const at::Tensor &scaleTensor, const at::Tensor &perTokenScaleTensor, const std::string &outDType);
+void RunBatchedQuantMatmul(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out, const std::string &outDType, float quantizationScale);
 
 } // namespace ActKernelWrapper
 
