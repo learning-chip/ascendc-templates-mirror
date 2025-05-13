@@ -42,6 +42,7 @@ void GroupedMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo)
 void OptimizedMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
 void QuantMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
 void BatchedQuantMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
+void OptimizedQuantMatmul(uint32_t blockNum, aclrtStream stream, KernelInfo kernelInfo);
 
 }
 

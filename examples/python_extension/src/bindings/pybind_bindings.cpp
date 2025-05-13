@@ -24,5 +24,6 @@ PYBIND11_MODULE(_C, m) {
     .def("grouped_matmul", &RunGroupedMatmul, "")
     .def("optimized_matmul", &RunOptimizedMatmul, "")
     .def("quant_matmul", &RunQuantMatmul, "")
-    .def("batched_quant_matmul", &RunBatchedQuantMatmul, "");
+    .def("batched_quant_matmul", &RunBatchedQuantMatmul, "")
+    .def("optimized_quant_matmul", &RunOptimizedQuantMatmul, "");
 }

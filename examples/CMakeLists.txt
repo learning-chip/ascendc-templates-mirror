@@ -82,6 +82,7 @@ foreach(EXAMPLE
     18_gemv_aic
     19_mla
     20_batched_quant_matmul
+    21_optimized_quant_matmul
 )
     add_subdirectory(${EXAMPLE})
 endforeach()

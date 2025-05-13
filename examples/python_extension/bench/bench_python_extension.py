@@ -40,7 +40,9 @@ def benchmark_and_plot():
         writer.writerow([
             "M", "N", "K",
             "duration_batched_us",
-            "duration_single_us"
+            "duration_single_us",
+            "duration_optimized_us",
+            "duration_torch_mm_us"
         ])
 
         for M, K, N in sizes:
@@ -53,6 +55,9 @@ def benchmark_and_plot():
             b_int = torch.randint(low=low, high=high, size=(batch_size, K, N), dtype=dtype_int, device=device)
             bqmm_result = torch.zeros((batch_size, M, N), dtype=dtype_fp16, device=device)
 
+            a_float = a_int[0].to(torch.float16)
+            b_float = b_int[0].to(torch.float16)
+
             # Single-scale tensors
             per_token_scale = torch.ones(M, dtype=dtype_bf16, device=device)
             scale_bf16 = torch.ones(N, dtype=dtype_bf16, device=device)
@@ -61,6 +66,8 @@ def benchmark_and_plot():
             for _ in range(n_warmup):
                 torch_act.batched_quant_matmul(a_int, b_int, bqmm_result, "float16", scale_tensor)
                 _ = torch_act.quant_matmul(a_int[0], b_int[0], scale_bf16, per_token_scale, "bf16")
+                _ = torch_act.optimized_quant_matmul(a_int[0], b_int[0], np.float32(1.0) , "float16")
+                _ = torch.mm(a_float, b_float)
 
             # Timing
             def time_batched():
@@ -84,18 +91,45 @@ def benchmark_and_plot():
                 end.record()
                 torch.npu.synchronize()
                 return start.elapsed_time(end) / n_repeat * 1e3
+            
+            def time_optimized_quant():
+                torch.npu.synchronize()
+                start = torch.npu.Event(enable_timing=True)
+                end = torch.npu.Event(enable_timing=True)
+                start.record()
+                for _ in range(n_repeat):
+                    _ = torch_act.optimized_quant_matmul(a_int[0], b_int[0], np.float32(1.0) , "float16")
+                end.record()
+                torch.npu.synchronize()
+                return start.elapsed_time(end) / n_repeat * 1e3
+            
+            def time_torch_mm():
+                torch.npu.synchronize()
+                start = torch.npu.Event(enable_timing=True)
+                end = torch.npu.Event(enable_timing=True)
+                start.record()
+                for _ in range(n_repeat):
+                    _ = torch.mm(a_float, b_float)
+                end.record()
+                torch.npu.synchronize()
+                return start.elapsed_time(end) / n_repeat * 1e3
 
             duration_batched = time_batched()
             duration_single = time_single()
+            duration_optimized = time_optimized_quant()
+            duration_torch_mm = time_torch_mm()
 
             print(f"batched_quant_matmul:\t{duration_batched:.2f} us")
             print(f"quant_matmul:\t\t{duration_single:.2f} us")
-            print(f"Speedup:\t\t{duration_single / duration_batched:.2f}x")
+            print(f"optimized_quant_matmul:\t{duration_optimized:.2f} us")
+            print(f"torch.mm:\t\t{duration_torch_mm:.2f} us")
 
             writer.writerow([
                 M, N, K,
                 f"{duration_batched:.6f}",
-                f"{duration_single:.6f}"
+                f"{duration_single:.6f}",
+                f"{duration_optimized:.6f}",
+                f"{duration_torch_mm:.6f}"
             ])
 
 if __name__ == "__main__":

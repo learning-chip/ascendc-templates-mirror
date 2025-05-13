@@ -33,16 +33,18 @@ per_token_scale = torch.ones(M, dtype=torch.bfloat16, device=device)
 a_float = a_int.to(torch.float16)
 b_float = b_int.to(torch.float16)
 
+
 torch_baseline = torch.bmm(a_float, b_float)
 torch_act.batched_quant_matmul(a_int, b_int, bqmm_result, "float16", np.float32(1.0))
 qmm_result = torch_act.quant_matmul(a_int[0], b_int[0], scale_bf16, per_token_scale, "bf16")
-
+oqmm_result = torch_act.optimized_quant_matmul(a_int[0], b_int[0].T, np.float32(1.0), "float16")
 
 is_qmm_correct = torch.allclose(torch_baseline[0].to(torch.bfloat16), qmm_result, atol=1)
 is_bqmm_correct = torch.allclose(torch_baseline, bqmm_result, atol=1)
+is_oqmm_correct = torch.allclose(torch.mm(a_float[0], b_float[0].T), oqmm_result, atol=1)
 
-if is_qmm_correct and is_bqmm_correct:
-    print("Both torch_act.batched_quant_matmul and torch_act.quant_matmul matched with baseline!")
+if is_qmm_correct and is_bqmm_correct and is_oqmm_correct:
+    print("All correct!")
 
 if is_qmm_correct == False:
     print("torch_act.quant_matmul did not match the results of torch baseline!")
@@ -50,3 +52,5 @@ if is_qmm_correct == False:
 if is_bqmm_correct == False:
     print("torch_act.batched_quant_matmul did not match the results of torch baseline!")
 
+if is_oqmm_correct == False:
+    print("torch_act.optimized_quant_matmul did not match the results of torch baseline!")
