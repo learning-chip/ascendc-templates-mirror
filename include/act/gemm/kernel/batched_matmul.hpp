@@ -54,6 +54,8 @@ public:
         GM_ADDR ptrC;
         LayoutC layoutC;
         int64_t strideC;
+        float quantScale;
+        uint8_t useFixpipeQuantization;
 
         // Methods
         ACT_DEVICE
@@ -68,6 +70,16 @@ public:
               ptrA(ptrA_), layoutA(layoutA_), strideA(strideA_),
               ptrB(ptrB_), layoutB(layoutB_), strideB(strideB_),
               ptrC(ptrC_), layoutC(layoutC_), strideC(strideC_) {}
+
+        ACT_DEVICE
+        Params(uint32_t batchCount_, GemmCoord const &problemShape_,
+                GM_ADDR ptrA_, LayoutA layoutA_, int64_t strideA_,
+                GM_ADDR ptrB_, LayoutB layoutB_, int64_t strideB_,
+                GM_ADDR ptrC_, LayoutC layoutC_, int64_t strideC_, float quantScale_)
+            : batchCount(batchCount_), problemShape(problemShape_),
+            ptrA(ptrA_), layoutA(layoutA_), strideA(strideA_),
+            ptrB(ptrB_), layoutB(layoutB_), strideB(strideB_),
+            ptrC(ptrC_), layoutC(layoutC_), strideC(strideC_),quantScale(quantScale_) {useFixpipeQuantization = 1;}
     };
 
     // Methods
@@ -96,31 +108,63 @@ public:
         AscendC::GlobalTensor<ElementC> gmC;
         gmC.SetGlobalBuffer((__gm__ ElementC *)params.ptrC);
 
-        for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
-            // Compute block location
-            uint32_t batchIdx = matmulBlockScheduler.GetBatchIdx(loopIdx);
-            GemmCoord blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
-            GemmCoord actualBlockShape = matmulBlockScheduler.GetActualBlockShape(blockCoord);
-
-            // batchOffset
-            int64_t batchOffsetA = batchIdx * params.strideA;
-            int64_t batchOffsetB = batchIdx * params.strideB;
-            int64_t batchOffsetC = batchIdx * params.strideC;
-
-            // Compute initial location in logical coordinates
-            MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
-            MatrixCoord offsetB{blockCoord.k() * L1TileShape::K, blockCoord.n() * L1TileShape::N};
-            MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
-            int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
-            int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-            int64_t gmOffsetC = params.layoutC.GetOffset(offsetC);
-
-            // Compute block-scoped matrix multiply-add
-            blockMmad(
-                gmA[batchOffsetA + gmOffsetA], params.layoutA,
-                gmB[batchOffsetB + gmOffsetB], params.layoutB,
-                gmC[batchOffsetC + gmOffsetC], params.layoutC,
-                actualBlockShape);
+        if(params.useFixpipeQuantization == 0)
+        {
+            for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
+                // Compute block location
+                uint32_t batchIdx = matmulBlockScheduler.GetBatchIdx(loopIdx);
+                GemmCoord blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
+                GemmCoord actualBlockShape = matmulBlockScheduler.GetActualBlockShape(blockCoord);
+    
+                // batchOffset
+                int64_t batchOffsetA = batchIdx * params.strideA;
+                int64_t batchOffsetB = batchIdx * params.strideB;
+                int64_t batchOffsetC = batchIdx * params.strideC;
+    
+                // Compute initial location in logical coordinates
+                MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
+                MatrixCoord offsetB{blockCoord.k() * L1TileShape::K, blockCoord.n() * L1TileShape::N};
+                MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
+                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+                int64_t gmOffsetC = params.layoutC.GetOffset(offsetC);
+    
+                // Compute block-scoped matrix multiply-add
+                blockMmad(
+                    gmA[batchOffsetA + gmOffsetA], params.layoutA,
+                    gmB[batchOffsetB + gmOffsetB], params.layoutB,
+                    gmC[batchOffsetC + gmOffsetC], params.layoutC,
+                    actualBlockShape);
+            }
+        }
+        else
+        {
+            for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
+                // Compute block location
+                uint32_t batchIdx = matmulBlockScheduler.GetBatchIdx(loopIdx);
+                GemmCoord blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
+                GemmCoord actualBlockShape = matmulBlockScheduler.GetActualBlockShape(blockCoord);
+    
+                // batchOffset
+                int64_t batchOffsetA = batchIdx * params.strideA;
+                int64_t batchOffsetB = batchIdx * params.strideB;
+                int64_t batchOffsetC = batchIdx * params.strideC;
+    
+                // Compute initial location in logical coordinates
+                MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
+                MatrixCoord offsetB{blockCoord.k() * L1TileShape::K, blockCoord.n() * L1TileShape::N};
+                MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
+                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+                int64_t gmOffsetC = params.layoutC.GetOffset(offsetC);
+    
+                // Compute block-scoped matrix multiply-add
+                blockMmad(
+                    gmA[batchOffsetA + gmOffsetA], params.layoutA,
+                    gmB[batchOffsetB + gmOffsetB], params.layoutB,
+                    gmC[batchOffsetC + gmOffsetC], params.layoutC,
+                    actualBlockShape, params.quantScale);
+            }
         }
     }
 

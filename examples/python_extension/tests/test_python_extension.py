@@ -6,61 +6,51 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-from torch_npu.testing.testcase import TestCase, run_tests
 import torch_npu
 import torch
 import torch_act
-torch.ops.load_library("../../../output/python_extension/libact_torch.so") # 手动指定so路径
+import numpy as np
+torch.ops.load_library("./output/python_extension/libact_torch.so") 
 
 
-class ActTest(TestCase):
-    def test_basic_matmul_pybind(self):
-        a = torch.ones((2, 3)).to(torch.float16).npu()
-        b = torch.ones((3, 4)).to(torch.float16).npu()
-        result = torch_act.basic_matmul(a, b, "float16")
-        golden = torch.mm(a, b)
-        self.assertRtolEqual(result, golden)
-        
-    def test_basic_matmul_pybind_bf16(self):
-        a = torch.ones((2, 3)).to(torch.bfloat16).npu()
-        b = torch.ones((3, 4)).to(torch.bfloat16).npu()
-        result = torch_act.basic_matmul(a, b, "bf16")
-        golden = torch.mm(a, b)
-        self.assertRtolEqual(result.to(torch.float32), golden.to(torch.float32))
+device = "npu:0"
 
-    def test_basic_matmul_torch_lib(self):
-        a = torch.ones((2, 3)).to(torch.float16).npu()
-        b = torch.ones((3, 4)).to(torch.float16).npu()
-        result = torch.ops.ActTorch.basic_matmul(a, b, "float16")
-        golden = torch.mm(a, b)
-        self.assertRtolEqual(result, golden)
+torch.manual_seed(0)
 
-    def test_grouped_matmul_slice_m_pybind(self):
-        m_list = [16, 32, 64]
-        k, n = 16, 16
-        a_list = [torch.ones((m, k)).to(torch.float16).npu() for m in m_list]
-        b_list = [torch.ones((k, n)).to(torch.float16).npu() for m in m_list]
-        result = torch_act.grouped_matmul(a_list, b_list, "float16", False)
-        golden = torch_npu.npu_grouped_matmul(a_list, b_list)
-        for i in range(len(m_list)):
-            self.assertRtolEqual(result[i], golden[i])
+M = N = K = 32
 
-    def test_grouped_matmul_slice_k_pybind(self):
-        k_list = [16, 32, 64]
-        m, n = 16, 16
-        a_list = [torch.ones((m, k)).to(torch.float16).npu() for k in k_list]
-        b_list = [torch.ones((k, n)).to(torch.float16).npu() for k in k_list]
-        result = torch_act.grouped_matmul(a_list, b_list, "float16", True)
-        golden = torch_npu.npu_grouped_matmul(a_list, b_list)
-        for i in range(len(k_list)):
-            self.assertRtolEqual(result[i], golden[i])
-        
-    def test_optimized_matmul_pybind(self):
-        a = torch.ones((2, 3)).to(torch.float16).npu()
-        b = torch.ones((3, 4)).to(torch.float16).npu()
-        result = torch_act.optimized_matmul(a, b, "float16")
-        golden = torch.mm(a, b)
-        self.assertRtolEqual(result, golden)
-        
-if __name__ == "__main__":
-    run_tests()
+low = -16
+high = 16
+batch_size = 12
+
+a_int = torch.randint(low=low, high=high, size = (batch_size, M, K), device=device).to(torch.int8)
+b_int = torch.randint(low=low, high=high, size = (batch_size, K, N), device=device).to(torch.int8)
+bqmm_result = torch.zeros((batch_size, M, N), device=device).to(torch.float16) # bqmm -> Batched Quant Matmul
+
+scale_bf16 = torch.ones(N, dtype=torch.bfloat16, device=device)
+per_token_scale = torch.ones(M, dtype=torch.bfloat16, device=device)
+
+a_float = a_int.to(torch.float16)
+b_float = b_int.to(torch.float16)
+
+
+torch_baseline = torch.bmm(a_float, b_float)
+torch_act.batched_quant_matmul(a_int, b_int, bqmm_result, "float16", np.float32(1.0))
+qmm_result = torch_act.quant_matmul(a_int[0], b_int[0], scale_bf16, per_token_scale, "bf16")
+oqmm_result = torch_act.optimized_quant_matmul(a_int[0], b_int[0].T, np.float32(1.0), "float16")
+
+is_qmm_correct = torch.allclose(torch_baseline[0].to(torch.bfloat16), qmm_result, atol=1)
+is_bqmm_correct = torch.allclose(torch_baseline, bqmm_result, atol=1)
+is_oqmm_correct = torch.allclose(torch.mm(a_float[0], b_float[0].T), oqmm_result, atol=1)
+
+if is_qmm_correct and is_bqmm_correct and is_oqmm_correct:
+    print("All correct!")
+
+if is_qmm_correct == False:
+    print("torch_act.quant_matmul did not match the results of torch baseline!")
+
+if is_bqmm_correct == False:
+    print("torch_act.batched_quant_matmul did not match the results of torch baseline!")
+
+if is_oqmm_correct == False:
+    print("torch_act.optimized_quant_matmul did not match the results of torch baseline!")

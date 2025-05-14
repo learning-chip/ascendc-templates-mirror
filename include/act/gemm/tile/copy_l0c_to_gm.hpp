@@ -78,7 +78,7 @@ template <>
 struct CopyL0CToGmQuantMode<
     Act::Arch::AtlasA2,
     int32_t, half,
-    ScaleGranularity::PER_TENSOR
+    ScaleGranularity::NO_QUANT
 > {
     static constexpr auto VALUE = QuantMode_t::DEQF16;
 };
@@ -139,6 +139,28 @@ struct CopyL0CToGm<Act::Arch::AtlasA2,
         intriParams.quantPre = quantPre;
         intriParams.reluEn = reluEn;
         intriParams.unitFlag = unitFlag;
+
+        // Call AscendC Fixpipe
+        AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_ROW_MAJOR>(dst, src, intriParams);
+    }
+
+    ACT_DEVICE
+    void operator()(float dequantScale, AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
+        LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+    {
+        AscendC::FixpipeParamsV220 intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = dstLayout.shape(1);
+        intriParams.mSize = dstLayout.shape(0);
+        intriParams.srcStride = srcLayout.stride(3) / srcLayout.stride(0);
+        intriParams.dstStride = dstLayout.stride(0);
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.deqScalar = *(reinterpret_cast<uint64_t *>(&dequantScale));
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_ROW_MAJOR>(dst, src, intriParams);

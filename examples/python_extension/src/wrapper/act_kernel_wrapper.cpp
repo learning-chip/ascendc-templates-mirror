@@ -256,4 +256,81 @@ at::Tensor RunOptimizedMatmul(const at::Tensor &mat1, const at::Tensor &mat2, co
     (void)aclrtSynchronizeStream(stream);
     return result;
 }
+
+at::Tensor RunQuantMatmul(const at::Tensor &mat1, const at::Tensor &mat2, const at::Tensor &scaleTensor, const at::Tensor &perTokenScaleTensor, const std::string &outDType)
+{
+    KernelInfo kernelInfo = GetKernelInfo(mat1, mat2, outDType);
+    kernelInfo.inputAddr.resize(4);
+    kernelInfo.inputAddr[0] = static_cast<uint8_t *>(const_cast<void *>(mat1.storage().data()));
+    kernelInfo.inputAddr[1] = static_cast<uint8_t *>(const_cast<void *>(mat2.storage().data()));
+    kernelInfo.inputAddr[2] = static_cast<uint8_t *>(const_cast<void *>(scaleTensor.storage().data()));
+    kernelInfo.inputAddr[3] = static_cast<uint8_t *>(const_cast<void *>(perTokenScaleTensor.storage().data()));
+
+    at::Tensor result = at::empty(InferShape(mat1.sizes(), mat2.sizes()), mat1.options().dtype(torch::kBFloat16));
+
+    kernelInfo.outputAddr.resize(1);
+    kernelInfo.outputAddr.at(0) = static_cast<uint8_t *>(const_cast<void *>(result.storage().data()));
+
+    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
+    uint32_t aicCoreNum = platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
+    QuantMatmul(aicCoreNum, stream, kernelInfo);
+    (void)aclrtSynchronizeStream(stream);
+    return result;
+}
+
+void RunBatchedQuantMatmul(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out, const std::string &outDType, float quantizationScale)
+{
+    int64_t batch_size = mat1.sizes().at(0);
+    KernelInfo kernelInfo;
+
+    kernelInfo.m = mat1.sizes().at(1);
+    kernelInfo.k = mat1.sizes().at(2);
+    kernelInfo.n = mat2.sizes().at(2);
+
+    kernelInfo.inputDataType = TorchDtypeToAclDtype(mat1.scalar_type());
+    kernelInfo.outputDataType = TorchDtypeToAclDtype(TypeStrToTorchDtype(outDType), kernelInfo.inputDataType);
+
+    kernelInfo.inputAddr.resize(2);
+    kernelInfo.inputAddr[0] = static_cast<uint8_t *>(const_cast<void *>(mat1.storage().data()));
+    kernelInfo.inputAddr[1] = static_cast<uint8_t *>(const_cast<void *>(mat2.storage().data()));
+
+    kernelInfo.quantizationScale = quantizationScale;
+    kernelInfo.batchCount = (uint32_t)batch_size;
+
+    kernelInfo.outputAddr.resize(1);
+    kernelInfo.outputAddr.at(0) = static_cast<uint8_t *>(const_cast<void *>(out.storage().data()));
+    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
+    uint32_t aicCoreNum = platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
+    BatchedQuantMatmul(aicCoreNum, stream, kernelInfo);
+    return;
+}
+
+at::Tensor RunOptimizedQuantMatmul(const at::Tensor &mat1, const at::Tensor &mat2, float quantizationScale, const std::string &outDType)
+{
+    KernelInfo kernelInfo;
+
+    kernelInfo.m = mat1.sizes().at(0);
+    kernelInfo.k = mat1.sizes().at(1);
+    kernelInfo.n = mat2.sizes().at(1);
+
+    kernelInfo.inputDataType = TorchDtypeToAclDtype(mat1.scalar_type());
+    kernelInfo.outputDataType = TorchDtypeToAclDtype(TypeStrToTorchDtype(outDType), kernelInfo.inputDataType);
+
+    kernelInfo.inputAddr.resize(2);
+    kernelInfo.inputAddr[0] = static_cast<uint8_t *>(const_cast<void *>(mat1.storage().data()));
+    kernelInfo.inputAddr[1] = static_cast<uint8_t *>(const_cast<void *>(mat2.storage().data()));
+    kernelInfo.quantizationScale = quantizationScale;
+
+    at::Tensor result = at::empty(InferShape(mat1.sizes(), mat2.sizes()), mat1.options().dtype(torch::kFloat16));
+
+    kernelInfo.outputAddr.resize(1);
+    kernelInfo.outputAddr.at(0) = static_cast<uint8_t *>(const_cast<void *>(result.storage().data()));
+
+    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
+    uint32_t aicCoreNum = platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
+    OptimizedQuantMatmul(aicCoreNum, stream, kernelInfo);
+    return result;
+}
+
+
 } // namespace Act
